@@ -1,2 +1,3 @@
 apps/viscoelasticity/output/
+libs/__pycache__/
 *.pyc
