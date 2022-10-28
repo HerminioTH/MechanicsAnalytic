@@ -56,7 +56,7 @@ def main():
 
 	# Save results
 	saver_eps_ve = TensorSaver(output_folder, "eps_ve")
-	saver_eps_ve.save_results(model_ve.time_list, model_ve.eps_ve)
+	saver_eps_ve.save_results(model_ve.time_list, model_ve.eps)
 
 	# Save settings
 	save_json(settings, os.path.join(output_folder, "settings.json"))
