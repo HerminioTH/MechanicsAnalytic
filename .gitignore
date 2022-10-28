@@ -1,3 +1,4 @@
 apps/viscoelasticity/output/
+apps/creep/output/
 libs/__pycache__/
 *.pyc
