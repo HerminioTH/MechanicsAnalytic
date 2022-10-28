@@ -162,7 +162,7 @@ class Creep(BaseSolution):
 		self.eps_cr_old = self.eps_cr
 
 	def compute_strains(self):
-		self.eps = []
+		self.eps = [self.eps_cr]
 		for i in range(1, len(self.time_list)):
 			self.compute_eps_cr(i)
 			self.eps.append(self.eps_cr)
