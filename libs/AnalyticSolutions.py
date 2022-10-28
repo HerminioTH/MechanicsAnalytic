@@ -56,23 +56,15 @@ class TensorSaver():
 		self.df = pd.DataFrame(self.tensor_data)
 		self.df.to_excel(os.path.join(self.output_folder, f"{self.file_name}.xlsx"))
 
-class ViscoElastic():
+
+
+class BaseSolution():
 	def __init__(self, settings):
 		self.__load_time_list(settings)
 		self.__build_sigmas(settings)
-		self.__load_properties(settings)
-		self
-		self.__build_stress_increments()
-		self.__build_matrix()
 
 	def __load_time_list(self, settings):
 		self.time_list = settings["time"]
-
-	def __load_properties(self, settings):
-		self.E0 = settings["elasticity"]["E"]
-		self.nu0 = settings["elasticity"]["nu"]
-		self.voigt_E = settings["viscoelasticity"]["E"]
-		self.voigt_eta = settings["viscoelasticity"]["eta"]
 
 	def __build_sigmas(self, settings):
 		n = len(settings["sigma_xx"])
@@ -84,6 +76,20 @@ class ViscoElastic():
 		sigma_xz = np.array(settings["sigma_xz"]).reshape((1, n))
 		self.sigmas = np.concatenate((sigma_xx, sigma_yy, sigma_zz, sigma_xy, sigma_yz, sigma_xz)).T
 		self.sigma_0 = self.sigmas[0]
+
+
+class ViscoElastic(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+		self.__build_stress_increments()
+		self.__build_matrix()
+
+	def __load_properties(self, settings):
+		self.E0 = settings["elasticity"]["E"]
+		self.nu0 = settings["elasticity"]["nu"]
+		self.voigt_E = settings["viscoelasticity"]["E"]
+		self.voigt_eta = settings["viscoelasticity"]["eta"]
 
 	def __build_stress_increments(self):
 		self.d_sigmas = []
@@ -112,26 +118,30 @@ class ViscoElastic():
 		return 1 + value
 
 	def compute_strains(self):
-		self.eps_ve = []
+		self.eps = []
 		for i in range(len(self.time_list)):
-			eps = self.A(self.time_list[i])*voigt2tensor(np.dot(self.D, self.sigma_0))
+			eps_value = self.A(self.time_list[i])*voigt2tensor(np.dot(self.D, self.sigma_0))
 			for j in range(i-1):
-				eps += self.A(self.time_list[i] - self.time_list[j])*voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
-			self.eps_ve.append(eps)
-		self.eps_ve = np.array(self.eps_ve)
+				eps_value += self.A(self.time_list[i] - self.time_list[j])*voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
+			self.eps.append(eps_value)
+		self.eps = np.array(self.eps)
 
-class Creep():
-	def __init__(self, A, n):
-		self.A = A
-		self.n = n
-		self.T = 298  		# Temperature, [K]
-		self.R = 8.32		# Universal gas constant
-		self.Q = 51600  	# Creep activation energy, [J/mol]
-		self.B = self.A*np.exp(-self.Q/(self.R*self.T))
+class Creep(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+
 		self.eps_cr = np.zeros((3,3))
 		self.eps_cr_old = np.zeros((3,3))
 		self.eps_cr_rate = np.zeros((3,3))
-		self.t_old = 0
+
+	def __load_properties(self, settings):
+		self.A = settings["creep"]["A"]
+		self.n = settings["creep"]["n"]
+		self.T = settings["creep"]["T"]
+		self.R = 8.32		# Universal gas constant
+		self.Q = 51600  	# Creep activation energy, [J/mol]
+		self.B = self.A*np.exp(-self.Q/(self.R*self.T))
 
 	def update_internal_variables(self):
 		self.eps_cr_old = self.eps_cr
@@ -143,12 +153,20 @@ class Creep():
 		von_Mises = np.sqrt((3/2.)*double_dot(s, s))
 		self.eps_cr_rate = self.B*(von_Mises**(self.n-1))*s
 
-	def compute_eps_cr(self, stress, t):
-		self.compute_eps_cr_rate(stress)
-		self.eps_cr = self.eps_cr_old + self.eps_cr_rate*(t - self.t_old)
-		# self.eps_cr = self.eps_cr_rate*t
-		self.t_old = t
+	def compute_eps_cr(self, i):
+		t = self.time_list[i]
+		t_old = self.time_list[i-1]
+		dt = t - t_old
+		self.compute_eps_cr_rate(self.sigmas[i])
+		self.eps_cr = self.eps_cr_old + self.eps_cr_rate*dt
 		self.eps_cr_old = self.eps_cr
+
+	def compute_strains(self):
+		self.eps = []
+		for i in range(1, len(self.time_list)):
+			self.compute_eps_cr(i)
+			self.eps.append(self.eps_cr)
+		self.eps = np.array(self.eps)
 
 class ViscoPlastic():
 	def __init__(self, A, n):
