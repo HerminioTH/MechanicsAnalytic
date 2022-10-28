@@ -22,10 +22,10 @@ def write_stresses():
 	settings = read_json(j_file)
 
 	# Define number of time steps
-	n_steps = 10
+	n_steps = 100
 
 	# Define time levels
-	settings["time"] = list(np.linspace(0, 2*day, n_steps))
+	settings["time"] = list(np.linspace(0, 40*day, n_steps))
 
 	# Define stress tensors
 	settings["sigma_zz"] = list(np.repeat(15*MPa, n_steps))
@@ -43,7 +43,7 @@ def main():
 	output_folder = os.path.join("output", "test")
 
 	# Write stresses, if necessary
-	# write_stresses()
+	write_stresses()
 
 	# Read settings
 	settings = read_json("settings.json")
