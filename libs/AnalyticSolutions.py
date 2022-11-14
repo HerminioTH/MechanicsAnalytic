@@ -77,28 +77,14 @@ class BaseSolution():
 		self.sigmas = np.concatenate((sigma_xx, sigma_yy, sigma_zz, sigma_xy, sigma_yz, sigma_xz)).T
 		self.sigma_0 = self.sigmas[0]
 
-
-class ViscoElastic(BaseSolution):
-	def __init__(self, settings):
-		super().__init__(settings)
-		self.__load_properties(settings)
-		self.__build_stress_increments()
-		self.__build_matrix()
-
-	def __load_properties(self, settings):
-		self.E0 = settings["elasticity"]["E"]
-		self.nu0 = settings["elasticity"]["nu"]
-		self.voigt_E = settings["viscoelasticity"]["E"]
-		self.voigt_eta = settings["viscoelasticity"]["eta"]
-
-	def __build_stress_increments(self):
+	def build_stress_increments(self):
 		self.d_sigmas = []
 		for i in range(1, len(self.sigmas)):
 			self.d_sigmas.append(self.sigmas[i] - self.sigmas[i-1])
 
-	def __build_matrix(self):
-		lame = self.E0*self.nu0/((1+self.nu0)*(1-2*self.nu0))
-		G = self.E0/(2 +2*self.nu0)
+	def build_matrix(self, E, nu):
+		lame = E*nu/((1+nu)*(1-2*nu))
+		G = E/(2 +2*nu)
 		x = 1
 		self.C = np.array([
 					[2*G + lame, 	lame, 		lame, 		0.,		0., 	0.],
@@ -110,12 +96,47 @@ class ViscoElastic(BaseSolution):
 				])
 		self.D = np.linalg.inv(self.C)
 
+
+class Elastic(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+		self.build_stress_increments()
+		self.build_matrix(self.E0, self.nu0)
+
+	def __load_properties(self, settings):
+		self.E0 = settings["elasticity"]["E"]
+		self.nu0 = settings["elasticity"]["nu"]
+
+	def compute_strains(self):
+		self.eps = []
+		for i in range(len(self.time_list)):
+			eps_value = voigt2tensor(np.dot(self.D, self.sigma_0))
+			for j in range(i-1):
+				eps_value += voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
+			self.eps.append(eps_value)
+		self.eps = np.array(self.eps)
+
+
+class ViscoElastic(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+		self.build_stress_increments()
+		self.build_matrix(self.E0, self.nu0)
+
+	def __load_properties(self, settings):
+		self.E0 = settings["elasticity"]["E"]
+		self.nu0 = settings["elasticity"]["nu"]
+		self.voigt_E = settings["viscoelasticity"]["E"]
+		self.voigt_eta = settings["viscoelasticity"]["eta"]
+
 	def A(self, t):
 		value = 0.0
 		for E, eta in zip(self.voigt_E, self.voigt_eta):
 			r = E/eta
 			value += (1 - np.exp(-r*t))*self.E0/E
-		return 1 + value
+		return value
 
 	def compute_strains(self):
 		self.eps = []
@@ -168,31 +189,109 @@ class Creep(BaseSolution):
 			self.eps.append(self.eps_cr)
 		self.eps = np.array(self.eps)
 
-class ViscoPlastic():
-	def __init__(self, A, n):
-		self.A = A
-		self.n = n
-		self.T = 298  		# Temperature, [K]
-		self.R = 8.32		# Universal gas constant
-		self.Q = 51600  	# Creep activation energy, [J/mol]
-		self.B = self.A*np.exp(-self.Q/(self.R*self.T))
-		self.eps_cr = np.zeros((3,3))
-		self.eps_cr_old = np.zeros((3,3))
-		self.eps_cr_rate = np.zeros((3,3))
-		self.t_old = 0
+class ViscoPlastic(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+		self.__compute_invariants()
+		self.__compute_lode_angle()
 
-	def update_internal_variables(self):
-		self.eps_cr_old = self.eps_cr
-		self.eps_cr_rate_old = self.eps_cr_rate
+	def __load_properties(self, settings):
+		self.mu_1 = settings["viscoplastic"]["mu_1"]
+		self.N_1 = settings["viscoplastic"]["N_1"]
+		self.n = settings["viscoplastic"]["n"]
+		self.alpha_1 = settings["viscoplastic"]["alpha_1"]
+		self.eta_1 = settings["viscoplastic"]["eta_1"]
+		self.beta_1 = settings["viscoplastic"]["beta_1"]
+		self.beta = settings["viscoplastic"]["beta"]
+		self.m_v = settings["viscoplastic"]["m_v"]
+		self.gamma = settings["viscoplastic"]["gamma"]
+		self.k_v = settings["viscoplastic"]["k_v"]
+		self.sigma_t = settings["viscoplastic"]["sigma_t"]
+		self.F0 = 1*MPa
+		self.alpha_0 = 1*MPa
 
-	def compute_eps_vp_rate(self, sigma):
+	def __compute_invariants(self):
+		stress = self.sigmas/GPa
+		sigma_11 = stress[:,0]
+		sigma_22 = stress[:,1]
+		sigma_33 = stress[:,2]
+		sigma_12 = stress[:,3]
+		sigma_23 = stress[:,4]
+		sigma_13 = stress[:,5]
+		self.I1 = sigma_11 + sigma_22 + sigma_33
+		self.I2 = sigma_11*sigma_22 + sigma_22*sigma_33 + sigma_11*sigma_33
+		self.I2 += - sigma_12**2 - sigma_23**2 - sigma_13**2
+		self.I3 = sigma_11*sigma_22*sigma_33 + 2*sigma_12*sigma_23*sigma_13
+		self.I3 += - sigma_33*sigma_12**2 - sigma_11*sigma_23**2 - sigma_22*sigma_13**2
+		self.J1 = np.zeros(self.sigmas[:,0].size)
+		self.J2 = (1/3)*self.I1**2 - self.I2
+		self.J3 = (2/27)*self.I1**3 - (1/3)*self.I1*self.I2 + self.I3
+
+	def __compute_lode_angle(self):
+		self.angle = np.zeros(self.J3.size)
+		for i in range(self.J3.size):
+			self.angle[i] = (1/3)*np.arccos((self.J3[i]**3)/(2*self.J2[i]**1.5))
+			print(i, self.J3[i], self.J2[i], (self.J3[i]**3)/(2*self.J2[i]**1.5), self.angle[i])
+
+	# def compute_yield_function(self):
+
+class ViscoPlastic_VonMises(BaseSolution):
+	def __init__(self, settings):
+		super().__init__(settings)
+		self.__load_properties(settings)
+
+	def __load_properties(self, settings):
+		self.yield_stress = settings["vonmises"]["yield_stress"]
+		self.eta = settings["vonmises"]["eta"]
+
+	def __compute_invariants(self, stress):
+		sigma_11 = stress[0]
+		sigma_22 = stress[1]
+		sigma_33 = stress[2]
+		sigma_12 = stress[3]
+		sigma_23 = stress[4]
+		sigma_13 = stress[5]
+
+		self.I1 = sigma_11 + sigma_22 + sigma_33
+		self.I2 = sigma_11*sigma_22 + sigma_22*sigma_33 + sigma_11*sigma_33
+		self.I2 += - sigma_12**2 - sigma_23**2 - sigma_13**2
+		self.I3 = sigma_11*sigma_22*sigma_33 + 2*sigma_12*sigma_23*sigma_13
+		self.I3 += - sigma_33*sigma_12**2 - sigma_11*sigma_23**2 - sigma_22*sigma_13**2
+		self.J1 = np.zeros(self.sigmas[:,0].size)
+		self.J2 = (1/3)*self.I1**2 - self.I2
+		self.J3 = (2/27)*self.I1**3 - (1/3)*self.I1*self.I2 + self.I3
+
+	def compute_yield_function(self, sigma):
 		stress = voigt2tensor(sigma)
 		s = stress - (1./3)*trace(stress)*np.eye(3)
 		von_Mises = np.sqrt((3/2.)*double_dot(s, s))
-		self.eps_cr_rate = self.B*(von_Mises**(self.n-1))*s
+		f = von_Mises - self.yield_stress
+		if f >= 0:
+			self.yield_stress = von_Mises
+		return f
 
-	def compute_creep_strain(self, stress, t):
-		self.compute_creep_strain_rate(stress)
-		self.eps_cr = self.eps_cr_old + self.eps_cr_rate*(t - self.t_old)
-		self.t_old = t
-		self.eps_cr_old = self.eps_cr
+	def compute_f_derivatives(self, sigma):
+		dSigma = 0.001
+		dFdS = np.zeros(6)
+		for i in range(6):
+			s = sigma.copy()
+			s[i] += dSigma
+			dFdS[i] = (self.compute_yield_function(sigma) - self.compute_yield_function(s))/dSigma
+		return dFdS
+
+	def ramp(self, f):
+		return (f + abs(f))/2.
+
+	def compute_strains(self):
+		self.eps = [np.zeros((3,3))]
+		for i in range(1, len(self.time_list)):
+			f = self.compute_yield_function(self.sigmas[i])
+			dFdS = self.compute_f_derivatives(self.sigmas[i])
+			gamma = self.ramp(f)/self.eta
+			self.eps.append(self.eps[-1] - gamma*voigt2tensor(dFdS))
+			if gamma > 0:
+				print(gamma*voigt2tensor(dFdS))
+		self.eps = np.array(self.eps)
+
+
