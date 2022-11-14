@@ -111,9 +111,7 @@ class Elastic(BaseSolution):
 	def compute_strains(self):
 		self.eps = []
 		for i in range(len(self.time_list)):
-			eps_value = voigt2tensor(np.dot(self.D, self.sigma_0))
-			for j in range(i-1):
-				eps_value += voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
+			eps_value = voigt2tensor(np.dot(self.D, self.sigmas[i]))
 			self.eps.append(eps_value)
 		self.eps = np.array(self.eps)
 
