@@ -64,7 +64,7 @@ class BaseSolution():
 		self.__build_sigmas(settings)
 
 	def __load_time_list(self, settings):
-		self.time_list = settings["time"]
+		self.time_list = np.array(settings["time"])
 
 	def __build_sigmas(self, settings):
 		n = len(settings["sigma_xx"])
@@ -81,6 +81,7 @@ class BaseSolution():
 		self.d_sigmas = []
 		for i in range(1, len(self.sigmas)):
 			self.d_sigmas.append(self.sigmas[i] - self.sigmas[i-1])
+		self.d_sigmas = np.array(self.d_sigmas)
 
 	def build_matrix(self, E, nu):
 		lame = E*nu/((1+nu)*(1-2*nu))
@@ -126,24 +127,56 @@ class ViscoElastic(BaseSolution):
 	def __load_properties(self, settings):
 		self.E0 = settings["elasticity"]["E"]
 		self.nu0 = settings["elasticity"]["nu"]
-		self.voigt_E = settings["viscoelasticity"]["E"]
-		self.voigt_eta = settings["viscoelasticity"]["eta"]
+		self.voigt_E = np.array(settings["viscoelasticity"]["E"])
+		self.voigt_eta = np.array(settings["viscoelasticity"]["eta"])
 
 	def A(self, t):
-		value = 0.0
+		try:
+			value = np.zeros(len(t))
+		except:
+			value = 0
 		for E, eta in zip(self.voigt_E, self.voigt_eta):
-			r = E/eta
-			value += (1 - np.exp(-r*t))*self.E0/E
+			value += (1 - np.exp(-E*t/eta))*self.E0/E
 		return value
+
+		# for i in range(len(self.voigt_E)):
+		# 	value = (1 - np.exp(-self.voigt_E*t/self.voigt_eta))*self.E0/self.voigt_E
+		# return sum(value)
 
 	def compute_strains(self):
 		self.eps = []
-		for i in range(len(self.time_list)):
+		shape = self.d_sigmas[0].shape
+		for i in range(0, len(self.time_list)):
+			values = np.zeros(shape)
+			A_list = self.A(self.time_list[i] - self.time_list[:i])
+			A_list = A_list.reshape((len(A_list),1))
+			values = A_list*self.d_sigmas[0:i]
+			soma = np.sum(values, axis=0)
 			eps_value = self.A(self.time_list[i])*voigt2tensor(np.dot(self.D, self.sigma_0))
-			for j in range(i-1):
-				eps_value += self.A(self.time_list[i] - self.time_list[j])*voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
+			eps_value += voigt2tensor(np.dot(self.D, soma))
 			self.eps.append(eps_value)
 		self.eps = np.array(self.eps)
+
+	# def compute_strains(self):
+	# 	self.eps = []
+	# 	shape = self.d_sigmas[0].shape
+	# 	for i in range(len(self.time_list)):
+	# 		soma = np.zeros(shape)
+	# 		for j in range(i-1):
+	# 			soma += self.A(self.time_list[i] - self.time_list[j])*self.d_sigmas[j+1]
+	# 		eps_value = self.A(self.time_list[i])*voigt2tensor(np.dot(self.D, self.sigma_0))
+	# 		eps_value += voigt2tensor(np.dot(self.D, soma))
+	# 		self.eps.append(eps_value)
+	# 	self.eps = np.array(self.eps)
+
+	# def compute_strains(self):
+	# 	self.eps = []
+	# 	for i in range(len(self.time_list)):
+	# 		eps_value = self.A(self.time_list[i])*voigt2tensor(np.dot(self.D, self.sigma_0))
+	# 		for j in range(i-1):
+	# 			eps_value += self.A(self.time_list[i] - self.time_list[j])*voigt2tensor(np.dot(self.D, self.d_sigmas[j+1]))
+	# 		self.eps.append(eps_value)
+	# 	self.eps = np.array(self.eps)
 
 class Creep(BaseSolution):
 	def __init__(self, settings):
@@ -288,8 +321,8 @@ class ViscoPlastic_VonMises(BaseSolution):
 			dFdS = self.compute_f_derivatives(self.sigmas[i])
 			gamma = self.ramp(f)/self.eta
 			self.eps.append(self.eps[-1] - gamma*voigt2tensor(dFdS))
-			if gamma > 0:
-				print(gamma*voigt2tensor(dFdS))
+			# if gamma > 0:
+			# 	print(gamma*voigt2tensor(dFdS))
 		self.eps = np.array(self.eps)
 
 
