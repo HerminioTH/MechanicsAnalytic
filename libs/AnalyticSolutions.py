@@ -251,19 +251,15 @@ class ViscoPlastic(BaseSolution):
 		sigma_23 = stress[:,4]
 		sigma_13 = stress[:,5]
 		self.I1 = sigma_11 + sigma_22 + sigma_33
-		self.I2 = sigma_11*sigma_22 + sigma_22*sigma_33 + sigma_11*sigma_33
-		self.I2 += - sigma_12**2 - sigma_23**2 - sigma_13**2
-		self.I3 = sigma_11*sigma_22*sigma_33 + 2*sigma_12*sigma_23*sigma_13
-		self.I3 += - sigma_33*sigma_12**2 - sigma_11*sigma_23**2 - sigma_22*sigma_13**2
+		self.I2 = sigma_11*sigma_22 + sigma_22*sigma_33 + sigma_11*sigma_33 - sigma_12**2 - sigma_23**2 - sigma_13**2
+		self.I3 = sigma_11*sigma_22*sigma_33 + 2*sigma_12*sigma_23*sigma_13 - sigma_33*sigma_12**2 - sigma_11*sigma_23**2 - sigma_22*sigma_13**2
 		self.J1 = np.zeros(self.sigmas[:,0].size)
 		self.J2 = (1/3)*self.I1**2 - self.I2
 		self.J3 = (2/27)*self.I1**3 - (1/3)*self.I1*self.I2 + self.I3
 
 	def __compute_lode_angle(self):
-		self.angle = np.zeros(self.J3.size)
-		for i in range(self.J3.size):
-			self.angle[i] = (1/3)*np.arccos((self.J3[i]**3)/(2*self.J2[i]**1.5))
-			print(i, self.J3[i], self.J2[i], (self.J3[i]**3)/(2*self.J2[i]**1.5), self.angle[i])
+		# self.lode_angle = (1/3)*np.arccos((self.J3**3)/(2*self.J2**1.5))
+		self.lode_angle = (1/3)*np.arccos((self.J3*np.sqrt(27))/(2*self.J2**1.5))
 
 	# def compute_yield_function(self):
 
