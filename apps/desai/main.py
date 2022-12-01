@@ -28,11 +28,11 @@ def write_stresses():
 	settings["time"] = list(np.linspace(0, 2500*hour, n_steps))
 
 	# Define stress tensors
-	settings["sigma_zz"] = list(np.repeat(12.0*MPa, n_steps))
+	settings["sigma_zz"] = list(np.repeat(10.0*MPa, n_steps))
 	settings["sigma_xx"] = list(np.repeat(0.0*MPa, n_steps))
 	settings["sigma_yy"] = list(np.repeat(0.0*MPa, n_steps))
 	settings["sigma_xy"] = list(np.repeat(0.0*MPa, n_steps))
-	settings["sigma_yz"] = list(np.repeat(10.0*MPa, n_steps))
+	settings["sigma_yz"] = list(np.repeat(0.0*MPa, n_steps))
 	settings["sigma_xz"] = list(np.repeat(0.0*MPa, n_steps))
 
 	# Dump to file
@@ -52,12 +52,24 @@ def main():
 	model_e = Elastic(settings)
 	# model_cr = Creep(settings)
 	# model_ve = ViscoElastic(settings)
-	model_vp = ViscoPlastic(settings)
+	model_vp = ViscoPlastic_Desai(settings)
 
-	print()
-	print(model_vp.lode_angle)
-	print(np.rad2deg(model_vp.lode_angle))
-	print(model_vp.J2/model_vp.J3)
+	print(model_vp.Qvp.free_symbols)
+
+	print(model_vp.Qvp)
+
+	# print()
+	# print(model_vp.I1)
+	# print()
+	# print(model_vp.I2)
+	# print()
+	# print((1/3)*model_vp.I1**2)
+	# print()
+	# print(model_vp.J2)
+	# print()
+	# print(model_vp.lode_angle)
+	# print()
+	# print(np.rad2deg(model_vp.lode_angle))
 
 
 	# # Compute strains

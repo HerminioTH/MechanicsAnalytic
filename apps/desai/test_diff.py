@@ -56,10 +56,17 @@ def main():
 
 
 	x = sy.Symbol("x")
+	y = sy.Symbol("y")
+	z = sy.Symbol("z")
 
-	f = sy.cos(x**2)
+	f = sy.cos(y**2)*x/z
 	dfdx = sy.diff(f, x)
-	print(dfdx)
+	# print(dfdx)
+
+	my_symbols = list(f.free_symbols)
+	print(my_symbols)
+	print(sy.srepr(f))
+
 
 
 if __name__ == '__main__':

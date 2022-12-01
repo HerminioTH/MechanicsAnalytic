@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import sympy as sy
 import os
 
 sec = 1.
@@ -220,27 +221,43 @@ class Creep(BaseSolution):
 			self.eps.append(self.eps_cr)
 		self.eps = np.array(self.eps)
 
-class ViscoPlastic(BaseSolution):
+class ViscoPlastic_Desai(BaseSolution):
 	def __init__(self, settings):
 		super().__init__(settings)
 		self.__load_properties(settings)
 		self.__compute_invariants()
 		self.__compute_lode_angle()
+		self.__initialize_potential_function()
 
 	def __load_properties(self, settings):
 		self.mu_1 = settings["viscoplastic"]["mu_1"]
 		self.N_1 = settings["viscoplastic"]["N_1"]
 		self.n = settings["viscoplastic"]["n"]
-		self.alpha_1 = settings["viscoplastic"]["alpha_1"]
+		self.a_1 = settings["viscoplastic"]["a_1"]
 		self.eta_1 = settings["viscoplastic"]["eta_1"]
 		self.beta_1 = settings["viscoplastic"]["beta_1"]
 		self.beta = settings["viscoplastic"]["beta"]
-		self.m_v = settings["viscoplastic"]["m_v"]
+		self.m = settings["viscoplastic"]["m"]
 		self.gamma = settings["viscoplastic"]["gamma"]
 		self.k_v = settings["viscoplastic"]["k_v"]
 		self.sigma_t = settings["viscoplastic"]["sigma_t"]
-		self.F0 = 1*MPa
-		self.alpha_0 = 1*MPa
+		self.F0 = 1
+		self.alpha = 0
+		self.alpha_q = 0
+
+	def compute_stress_invariants(self, s_xx, s_yy, s_zz, s_xy, s_xz, s_yz):
+		I1 = s_xx + s_yy + s_zz
+		I2 = s_xx*s_yy + s_yy*s_zz + s_xx*s_zz - s_xy**2 - s_yz**2 - s_xz**2
+		I3 = s_xx*s_yy*s_zz + 2*s_xy*s_yz*s_xz - s_zz*s_xy**2 - s_xx*s_yz**2 - s_yy*s_xz**2
+		return I1, I2, I3
+
+	def compute_deviatoric_invariants(self, I1, I2, I3):
+		# if type(I1) == np.ndarray:
+		# 	self.J1 = np.zeros(I1.size)
+		J1 = np.zeros(I1.size) if type(I1) == np.ndarray else 0
+		J2 = (1/3)*I1**2 - I2
+		J3 = (2/27)*I1**3 - (1/3)*I1*I2 + I3
+		return J1, J2, J3
 
 	def __compute_invariants(self):
 		stress = self.sigmas/GPa
@@ -250,18 +267,38 @@ class ViscoPlastic(BaseSolution):
 		sigma_12 = stress[:,3]
 		sigma_23 = stress[:,4]
 		sigma_13 = stress[:,5]
-		self.I1 = sigma_11 + sigma_22 + sigma_33
-		self.I2 = sigma_11*sigma_22 + sigma_22*sigma_33 + sigma_11*sigma_33 - sigma_12**2 - sigma_23**2 - sigma_13**2
-		self.I3 = sigma_11*sigma_22*sigma_33 + 2*sigma_12*sigma_23*sigma_13 - sigma_33*sigma_12**2 - sigma_11*sigma_23**2 - sigma_22*sigma_13**2
-		self.J1 = np.zeros(self.sigmas[:,0].size)
-		self.J2 = (1/3)*self.I1**2 - self.I2
-		self.J3 = (2/27)*self.I1**3 - (1/3)*self.I1*self.I2 + self.I3
+		self.I1, self.I2, self.I3 = self.compute_stress_invariants(sigma_11, sigma_22, sigma_33, sigma_12, sigma_13, sigma_23)
+		self.J1, self.J2, self.J3 = self.compute_deviatoric_invariants(self.I1, self.I2, self.I3)
+		self.I1_star = self.I1 + np.repeat(self.sigma_t, self.I1.size)
 
 	def __compute_lode_angle(self):
-		# self.lode_angle = (1/3)*np.arccos((self.J3**3)/(2*self.J2**1.5))
-		self.lode_angle = (1/3)*np.arccos((self.J3*np.sqrt(27))/(2*self.J2**1.5))
+		self.lode_angle = (1/3)*np.arccos(-(self.J3*np.sqrt(27))/(2*self.J2**1.5))
 
-	# def compute_yield_function(self):
+	def compute_yield_function(self):
+		F1 = (-self.alpha*self.I1_star**self.n + self.gamma*self.I1_star**2)
+		F2 = (np.exp(self.beta_1*self.I1_star) - self.beta*np.cos(3*self.lode_angle))**self.m
+		self.Fvp = self.J2 - F1*F2
+
+	def __initialize_potential_function(self):
+		# Stress components
+		self.s_xx = sy.Symbol("s_xx")
+		self.s_yy = sy.Symbol("s_yy")
+		self.s_zz = sy.Symbol("s_zz")
+		self.s_xy = sy.Symbol("s_xy")
+		self.s_xz = sy.Symbol("s_xz")
+		self.s_yz = sy.Symbol("s_yz")
+
+		I1, I2, I3 = self.compute_stress_invariants(self.s_xx, self.s_yy, self.s_zz, self.s_xy, self.s_xz, self.s_yz)
+		J1, J2, J3 = self.compute_deviatoric_invariants(I1, I2, I3)
+
+		# Compute Lode's angle
+		theta = (1/3)*sy.acos(-(J3*np.sqrt(27))/(2*J2**1.5))
+
+		# Potential function
+		self.Qvp = J2 - (self.gamma*I1**2 - self.alpha_q*I1**self.n)*(sy.exp(self.beta_1*I1) - self.beta*sy.cos(3*theta))**self.m
+
+
+
 
 class ViscoPlastic_VonMises(BaseSolution):
 	def __init__(self, settings):
