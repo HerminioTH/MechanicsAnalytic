@@ -3,5 +3,9 @@ apps/creep/output/
 apps/creep_stages_1_2/output/
 apps/viscoplasticity/output/
 apps/desai/output/
+apps/desai/desai_model_2.py
+apps/desai/desai_model_3.py
+apps/desai/temp.py
+apps/desai/test_diff.py
 libs/__pycache__/
 *.pyc
