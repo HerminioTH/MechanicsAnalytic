@@ -2,5 +2,6 @@ apps/viscoelasticity/output/
 apps/creep/output/
 apps/creep_stages_1_2/output/
 apps/viscoplasticity/output/
+apps/desai/output/
 libs/__pycache__/
 *.pyc
