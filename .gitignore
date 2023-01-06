@@ -2,6 +2,7 @@ apps/viscoelasticity/output/
 apps/creep/output/
 apps/creep_stages_1_2/output/
 apps/viscoplasticity/output/
+apps/wang/output/
 apps/desai/output/
 apps/desai/desai_model_2.py
 apps/desai/desai_model_3.py

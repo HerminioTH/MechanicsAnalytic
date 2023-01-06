@@ -49,12 +49,12 @@ def write_stresses():
 	sigma_i = 10.0*MPa
 	sigma_f1 = 15*MPa
 	sigma_f2 = 20*MPa
-	sigma_r = 5.0*MPa
+	sigma_r = 10.0*MPa
 	sigma_z = [sigma_i]
 	t_mid_1 = t_f/3
 	t_mid_2 = 2*t_f/3
 
-	dSigma = 20*MPa
+	dSigma = 10*MPa
 	dt = t_f/4
 	m0 = dSigma/dt
 	m1 = 0
@@ -88,11 +88,11 @@ def write_stresses():
 		else:
 			sigma_z.append(sigma_z[-1] + m8*dt)
 
-	sigma_r = list(0.5*np.array(sigma_z))
+	# sigma_r = list(0.5*np.array(sigma_z))
 
 	settings["sigma_zz"] = sigma_z
-	settings["sigma_xx"] = sigma_r#list(np.repeat(sigma_r, n_steps))
-	settings["sigma_yy"] = sigma_r#list(np.repeat(sigma_r, n_steps))
+	settings["sigma_xx"] = list(np.repeat(sigma_r, n_steps))
+	settings["sigma_yy"] = list(np.repeat(sigma_r, n_steps))
 	settings["sigma_xy"] = list(np.repeat(0.0*MPa, n_steps))
 	settings["sigma_yz"] = list(np.repeat(0.0*MPa, n_steps))
 	settings["sigma_xz"] = list(np.repeat(0.0*MPa, n_steps))

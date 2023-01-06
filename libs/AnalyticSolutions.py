@@ -333,7 +333,7 @@ class ViscoPlastic_Desai(BaseSolution):
 		self.qsi_old = (self.a_1/self.alpha)**(1/self.eta)
 
 	def __compute_stress_invariants(self, s_xx, s_yy, s_zz, s_xy, s_xz, s_yz):
-		I1 = (s_xx + s_yy + s_zz + self.sigma_t)
+		I1 = (s_xx + s_yy + s_zz + 0*self.sigma_t)
 		I2 = s_xx*s_yy + s_yy*s_zz + s_xx*s_zz - s_xy**2 - s_yz**2 - s_xz**2
 		I3 = s_xx*s_yy*s_zz + 2*s_xy*s_yz*s_xz - s_zz*s_xy**2 - s_xx*s_yz**2 - s_yy*s_xz**2
 		return I1, I2, I3
@@ -355,8 +355,9 @@ class ViscoPlastic_Desai(BaseSolution):
 			self.Fvp = -100
 		else:
 			Sr = self.__compute_Sr(J2, J3)
-			F1 = (-self.alpha*I1**self.n + self.gamma*I1**2)
-			F2 = (np.exp(self.beta_1*I1) - self.beta*Sr)**self.m
+			I1_star = I1 + self.sigma_t
+			F1 = (-self.alpha*I1_star**self.n + self.gamma*I1_star**2)
+			F2 = (np.exp(self.beta_1*I1_star) - self.beta*Sr)**self.m
 			self.Fvp = J2 - F1*F2
 
 	def __initialize_potential_function(self):
