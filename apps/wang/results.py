@@ -84,7 +84,7 @@ def load_stresses(settings, unit=MPa):
 
 def compute_invariants(settings, s_xx, s_yy, s_zz, s_xy, s_yz, s_xz):
 	sigma_t = settings["viscoplastic"]["sigma_t"]
-	I1 = (s_xx + s_yy + s_zz + 0*sigma_t)
+	I1 = s_xx + s_yy + s_zz
 	I2 = s_xx*s_yy + s_yy*s_zz + s_xx*s_zz - s_xy**2 - s_yz**2 - s_xz**2
 	I3 = s_xx*s_yy*s_zz + 2*s_xy*s_yz*s_xz - s_zz*s_xy**2 - s_xx*s_yz**2 - s_yy*s_xz**2
 	J1 = np.repeat(0., len(I1))

@@ -237,17 +237,21 @@ class ViscoPlastic_Desai(BaseSolution):
 		self.eps = [np.zeros((3,3))]
 		for i in range(1, len(self.time_list)):
 			dt = self.time_list[i] - self.time_list[i-1]
+			# print(dt)
 			# dt /= day
 			stress_MPa = self.sigmas[i,:].copy()/MPa
 			self.compute_yield_function(stress_MPa)
+			# print("Fvp:", self.Fvp)
+			
 			if self.Fvp <= 0:
 				self.eps.append(self.eps[-1])
 				self.alphas.append(self.alpha)
 				self.alpha_qs.append(self.alpha_q)
+				self.Fvp_list.append(self.Fvp)
 			else:
 				tol = 1e-6
 				error = 2*tol
-				maxiter = 50
+				maxiter = 20
 				alpha_last = self.alpha
 				ite = 1
 				while error > tol and ite < maxiter:
@@ -256,6 +260,14 @@ class ViscoPlastic_Desai(BaseSolution):
 					increment = double_dot(strain_rate, strain_rate)**0.5*dt
 					self.qsi = self.qsi_old + increment
 
+					strain_v_rate = np.zeros((3,3))
+					strain_v_rate[0][0] = strain_rate[0][0]
+					strain_v_rate[1][1] = strain_rate[1][1]
+					strain_v_rate[2][2] = strain_rate[2][2]
+					increment_v = double_dot(strain_v_rate, strain_v_rate)**0.5*dt
+					self.qsi_v = self.qsi_v_old + increment_v
+
+					self.__update_kv(stress_MPa)
 					self.__update_alpha()
 					self.__update_alpha_q()
 
@@ -268,23 +280,41 @@ class ViscoPlastic_Desai(BaseSolution):
 						print(f"Maximum number of iterations ({maxiter}) reached.")
 
 				self.qsi_old = self.qsi
+				# self.qsi_v_old = self.qsi_v
 				self.eps.append(self.eps[-1] + strain_rate*dt)
 				self.alphas.append(self.alpha)
 				self.alpha_qs.append(self.alpha_q)
+				self.Fvp_list.append(self.Fvp)
+
+			print(self.Fvp)
 
 		self.eps = np.array(self.eps)
 		self.alphas = np.array(self.alphas)
 		self.alpha_qs = np.array(self.alpha_qs)
 
+	def __update_kv(self, stress_MPa):
+		sigma = stress_MPa[2]
+		# self.k_v = -0.00085*sigma**2 + 0.015*sigma + 0.21
+		# self.k_v = 0.18
+		# coeffs = [2.39027657e-06, -4.54946293e-05, -6.57580943e-04,  4.99265504e-03,  1.81960713e-01, -6.45373053e-01]
+		# coeffs = [-2.25330759e-07,  7.08080098e-06,  4.63967164e-05, -2.08478762e-03, -2.79699173e-02,  8.07033586e-01, -3.33527302e+00]
+		# coeffs = [ 0.00859745, -0.34279313,  3.41342767]
+		# coeffs = [ 0.00878372, -0.33816767,  3.28399277]
+		# coeffs = [-7.66399407e-05,  3.77666296e-03, -6.25699148e-02,  4.23032481e-01, -8.83596888e-01]
+		# func = np.poly1d(coeffs)
+		# self.k_v = func(sigma)
+		pass
+
 	def __update_alpha(self):
 		self.alpha = self.a_1 / (self.qsi**self.eta)
 
 	def __update_alpha_q(self):
-		self.alpha_q = self.alpha
+		self.alpha_q = self.alpha + self.k_v*(self.alpha_0 - self.alpha)*(1 - self.qsi_v/self.qsi)
 
 	def __compute_strain_rate(self, stress_MPa):
 		self.__compute_F0(stress_MPa)
 		n_flow = self.evaluate_flow_direction(stress_MPa, self.alpha_q)
+		# print(n_flow)
 		lmbda = self.mu_1*(self.Fvp/self.F0)**self.N_1
 		strain_rate = lmbda*n_flow
 		return strain_rate
@@ -330,10 +360,12 @@ class ViscoPlastic_Desai(BaseSolution):
 		self.alpha_q = self.alpha_0
 		self.alphas = [self.alpha]
 		self.alpha_qs = [self.alpha_q]
+		self.Fvp_list = [0]
 		self.qsi_old = (self.a_1/self.alpha)**(1/self.eta)
+		self.qsi_v_old = self.qsi_old
 
 	def __compute_stress_invariants(self, s_xx, s_yy, s_zz, s_xy, s_xz, s_yz):
-		I1 = (s_xx + s_yy + s_zz + 0*self.sigma_t)
+		I1 = s_xx + s_yy + s_zz
 		I2 = s_xx*s_yy + s_yy*s_zz + s_xx*s_zz - s_xy**2 - s_yz**2 - s_xz**2
 		I3 = s_xx*s_yy*s_zz + 2*s_xy*s_yz*s_xz - s_zz*s_xy**2 - s_xx*s_yz**2 - s_yy*s_xz**2
 		return I1, I2, I3
@@ -376,18 +408,21 @@ class ViscoPlastic_Desai(BaseSolution):
 		# Compute Lode's angle
 		Sr = self.__compute_Sr(J2, J3)
 
+		# Compute I_star
+		I1_star = I1 + self.sigma_t
+
 		# Potential function
-		F1 = (-self.a_q*I1**self.n + self.gamma*I1**2)
-		F2 = (sy.exp(self.beta_1*I1) - self.beta*Sr)**self.m
-		self.Qvp = J2 - F1*F2
+		Q1 = (-self.a_q*I1_star**self.n + self.gamma*I1_star**2)
+		Q2 = (sy.exp(self.beta_1*I1_star) - self.beta*Sr)**self.m
+		Qvp = J2 - Q1*Q2
 
 		variables = (self.s_xx, self.s_yy, self.s_zz, self.s_xy, self.s_xz, self.s_yz, self.a_q)
-		self.dQdSxx = sy.lambdify(variables, sy.diff(self.Qvp, self.s_xx), "numpy")
-		self.dQdSyy = sy.lambdify(variables, sy.diff(self.Qvp, self.s_yy), "numpy")
-		self.dQdSzz = sy.lambdify(variables, sy.diff(self.Qvp, self.s_zz), "numpy")
-		self.dQdSxy = sy.lambdify(variables, sy.diff(self.Qvp, self.s_xy), "numpy")
-		self.dQdSxz = sy.lambdify(variables, sy.diff(self.Qvp, self.s_xz), "numpy")
-		self.dQdSyz = sy.lambdify(variables, sy.diff(self.Qvp, self.s_yz), "numpy")
+		self.dQdSxx = sy.lambdify(variables, sy.diff(Qvp, self.s_xx), "numpy")
+		self.dQdSyy = sy.lambdify(variables, sy.diff(Qvp, self.s_yy), "numpy")
+		self.dQdSzz = sy.lambdify(variables, sy.diff(Qvp, self.s_zz), "numpy")
+		self.dQdSxy = sy.lambdify(variables, sy.diff(Qvp, self.s_xy), "numpy")
+		self.dQdSxz = sy.lambdify(variables, sy.diff(Qvp, self.s_xz), "numpy")
+		self.dQdSyz = sy.lambdify(variables, sy.diff(Qvp, self.s_yz), "numpy")
 
 	def evaluate_flow_direction(self, stress, alpha_q):
 		# Analytical derivatives
@@ -398,11 +433,15 @@ class ViscoPlastic_Desai(BaseSolution):
 		dQdS[0,1] = dQdS[1,0] = self.dQdSxy(*stress, alpha_q)
 		dQdS[0,2] = dQdS[2,0] = self.dQdSxz(*stress, alpha_q)
 		dQdS[1,2] = dQdS[2,1] = self.dQdSyz(*stress, alpha_q)
+		# print()
+		# print("dQdS:")
+		# print(dQdS)
+		# print()
 		return dQdS
 
 	# def evaluate_flow_direction(self, stress, alpha_q):
 	# 	# Finite difference derivatives
-	# 	dSigma = 0.01
+	# 	dSigma = 0.001
 	# 	dQdS = np.zeros(6)
 	# 	self.compute_yield_function(stress)
 	# 	A = self.Fvp
