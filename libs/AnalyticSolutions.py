@@ -260,11 +260,12 @@ class ViscoPlastic_Desai(BaseSolution):
 					increment = double_dot(strain_rate, strain_rate)**0.5*dt
 					self.qsi = self.qsi_old + increment
 
-					strain_v_rate = np.zeros((3,3))
-					strain_v_rate[0][0] = strain_rate[0][0]
-					strain_v_rate[1][1] = strain_rate[1][1]
-					strain_v_rate[2][2] = strain_rate[2][2]
-					increment_v = double_dot(strain_v_rate, strain_v_rate)**0.5*dt
+					# strain_v_rate = np.zeros((3,3))
+					# strain_v_rate[0][0] = strain_rate[0][0]
+					# strain_v_rate[1][1] = strain_rate[1][1]
+					# strain_v_rate[2][2] = strain_rate[2][2]
+					# increment_v = double_dot(strain_v_rate, strain_v_rate)**0.5*dt
+					increment_v = (strain_rate[0][0] + strain_rate[1][1] + strain_rate[2][2])*dt
 					self.qsi_v = self.qsi_v_old + increment_v
 
 					self.__update_kv(stress_MPa)
@@ -280,7 +281,7 @@ class ViscoPlastic_Desai(BaseSolution):
 						print(f"Maximum number of iterations ({maxiter}) reached.")
 
 				self.qsi_old = self.qsi
-				# self.qsi_v_old = self.qsi_v
+				self.qsi_v_old = self.qsi_v
 				self.eps.append(self.eps[-1] + strain_rate*dt)
 				self.alphas.append(self.alpha)
 				self.alpha_qs.append(self.alpha_q)
@@ -409,7 +410,7 @@ class ViscoPlastic_Desai(BaseSolution):
 		Sr = self.__compute_Sr(J2, J3)
 
 		# Compute I_star
-		I1_star = I1 + self.sigma_t
+		I1_star = I1 #+ self.sigma_t
 
 		# Potential function
 		Q1 = (-self.a_q*I1_star**self.n + self.gamma*I1_star**2)
